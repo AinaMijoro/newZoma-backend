@@ -1,8 +1,11 @@
+require('dotenv').config();
 const mongoose = require('mongoose');
 
-const connectionString = 'mongodb+srv://Aina:jXNAEXPUfkId1SsH@cluster0.uirurbd.mongodb.net/Zoma';
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => {
+    console.log('Database connected');
+    console.log('Base utilisée :', mongoose.connection.name);
+  })
+  .catch(error => console.error('MongoDB connection error:', error.message));
 
-mongoose.connect(connectionString, { connectTimeoutMS: 2000 })
- .then(() => console.log('Database connected'))
-
-  .catch(error => console.error(error));
+module.exports = mongoose;
