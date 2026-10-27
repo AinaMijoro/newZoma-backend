@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const User = require('../models/users');
+const jwt = require('jsonwebtoken');
 
 // Inscription d'un nouvel utilisateur
 router.post('/register', async (req, res) => {
@@ -91,15 +92,23 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    return res.status(200).json({
-      message: 'Connexion réussie.',
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        profile: user.profile
-      }
-    });
+    const token = jwt.sign(
+  { userId: user._id.toString() },
+  process.env.JWT_SECRET,
+  { expiresIn: '2h' }
+);
+
+return res.status(200).json({
+  message: 'Connexion réussie.',
+  token,
+  user: {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    profiles: user.profiles,
+    role: user.role
+  }
+});
   } catch (error) {
     console.error('Erreur connexion :', error.message);
 
@@ -109,19 +118,25 @@ router.post('/login', async (req, res) => {
   }
 });
 
+
 router.patch('/:userId/profile', async (req, res) => {
   try {
-    const { profile } = req.body;
+    const { profiles } = req.body;
 
-    if (!['cherche', 'propose'].includes(profile)) {
+    if (
+      !Array.isArray(profiles) ||
+      profiles.length === 0 ||
+      !profiles.every(profile => ['cherche', 'propose'].includes(profile)) ||
+      new Set(profiles).size !== profiles.length
+    ) {
       return res.status(400).json({
-        message: 'Le profil doit être "cherche" ou "propose".'
+        message: 'Choisis au moins un profil valide : "cherche" ou "propose".'
       });
     }
 
     const user = await User.findByIdAndUpdate(
       req.params.userId,
-      { profile },
+      { profiles },
       { new: true, runValidators: true }
     ).select('-password');
 
@@ -132,11 +147,11 @@ router.patch('/:userId/profile', async (req, res) => {
     }
 
     return res.status(200).json({
-      message: 'Profil enregistré avec succès.',
+      message: 'Profils enregistrés avec succès.',
       user
     });
   } catch (error) {
-    console.error('Erreur enregistrement profil :', error.message);
+    console.error('Erreur enregistrement profils :', error.message);
 
     if (error.name === 'CastError') {
       return res.status(400).json({
@@ -145,7 +160,7 @@ router.patch('/:userId/profile', async (req, res) => {
     }
 
     return res.status(500).json({
-      message: 'Une erreur est survenue lors de l’enregistrement du profil.'
+      message: 'Une erreur est survenue lors de l’enregistrement des profils.'
     });
   }
 });

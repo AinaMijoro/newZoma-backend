@@ -18,11 +18,18 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  profile: {
-  type: String,
-  enum: ["cherche", "propose"],
-  default: null
-}
+  profiles: {
+    type: [{
+      type: String,
+      enum: ['cherche', 'propose']
+    }],
+    default: []
+  },
+    role: {
+    type: String,
+    enum: ['user', 'admin'],
+    default: 'user'
+  }
 }, {
   timestamps: true
 });
