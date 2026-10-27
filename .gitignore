@@ -59,3 +59,9 @@ typings/
 
 # next.js build output
 .next
+
+# Local IDE settings
+.idea/
+
+# Local npm lockfile
+package-lock.json
