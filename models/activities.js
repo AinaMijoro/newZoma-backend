@@ -13,6 +13,13 @@ const activitySchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  normalizedName: {
+    type: String,
+    required: true,
+    trim: true,
+    lowercase: true,
+    unique: true
+  },
 
   specialty: {
     type: String,

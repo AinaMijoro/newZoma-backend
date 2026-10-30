@@ -7,10 +7,12 @@ const User = require('../models/users');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const validCountries = ['France', 'Madagascar'];
+
 const validParcelDirections = [
   'france_to_madagascar',
   'madagascar_to_france'
 ];
+
 const validDeliveryTypes = [
   'free',
   'free_over_minimum',
@@ -40,38 +42,36 @@ router.post('/', async (req, res) => {
       delivery
     } = req.body;
 
-    
-const checks = {
-  userIdString: typeof userId === 'string',
-  userIdValid: mongoose.Types.ObjectId.isValid(userId),
-  nameValid: typeof name === 'string' && !!name.trim(),
-  specialtyValid: typeof specialty === 'string' && !!specialty.trim(),
-  countriesValid:
-    Array.isArray(countries) &&
-    countries.length > 0 &&
-    countries.every(country => validCountries.includes(country)) &&
-    new Set(countries).size === countries.length,
-  frenchDepartmentsValid: isStringArray(frenchDepartments),
-  frenchCitiesValid: isStringArray(frenchCities),
-  madagascarCitiesValid: isStringArray(madagascarCities),
-  parcelDirectionsValid:
-    Array.isArray(parcelDirections) &&
-    parcelDirections.every(direction =>
-      validParcelDirections.includes(direction)
-    ) &&
-    new Set(parcelDirections).size === parcelDirections.length,
-  deliveryTypeValid:
-    !!delivery && validDeliveryTypes.includes(delivery.type)
-};
+    const checks = {
+      userIdString: typeof userId === 'string',
+      userIdValid: mongoose.Types.ObjectId.isValid(userId),
+      nameValid: typeof name === 'string' && !!name.trim(),
+      specialtyValid: typeof specialty === 'string' && !!specialty.trim(),
+      countriesValid:
+        Array.isArray(countries) &&
+        countries.length > 0 &&
+        countries.every(country => validCountries.includes(country)) &&
+        new Set(countries).size === countries.length,
+      frenchDepartmentsValid: isStringArray(frenchDepartments),
+      frenchCitiesValid: isStringArray(frenchCities),
+      madagascarCitiesValid: isStringArray(madagascarCities),
+      parcelDirectionsValid:
+        Array.isArray(parcelDirections) &&
+        parcelDirections.every(direction =>
+          validParcelDirections.includes(direction)
+        ) &&
+        new Set(parcelDirections).size === parcelDirections.length,
+      deliveryTypeValid:
+        !!delivery && validDeliveryTypes.includes(delivery.type)
+    };
 
-console.log("ACTIVITY VALIDATION:", checks);
+    console.log('ACTIVITY VALIDATION:', checks);
 
-if (Object.values(checks).some(valid => !valid)) {
-  return res.status(400).json({
-    message: 'Vérifie les informations obligatoires de ton activité.'
-  });
-}
-
+    if (Object.values(checks).some(valid => !valid)) {
+      return res.status(400).json({
+        message: 'Vérifie les informations obligatoires de ton activité.'
+      });
+    }
 
     if (
       (frenchDepartments.length > 0 || frenchCities.length > 0) &&
@@ -91,8 +91,10 @@ if (Object.values(checks).some(valid => !valid)) {
       });
     }
 
-    if (parcelDirections.length > 0 &&
-        !(countries.includes('France') && countries.includes('Madagascar'))) {
+    if (
+      parcelDirections.length > 0 &&
+      !(countries.includes('France') && countries.includes('Madagascar'))
+    ) {
       return res.status(400).json({
         message: 'Pour proposer un envoi entre les deux pays, sélectionne la France et Madagascar.'
       });
@@ -130,9 +132,20 @@ if (Object.values(checks).some(valid => !valid)) {
       });
     }
 
+    const normalizedName = name.trim().toLowerCase();
+
+    const existingActivity = await Activity.findOne({ normalizedName });
+
+    if (existingActivity) {
+      return res.status(409).json({
+        message: 'Une activité portant déjà ce nom existe. Choisis un autre nom.'
+      });
+    }
+
     const activity = await Activity.create({
       userId,
       name: name.trim(),
+      normalizedName,
       specialty: specialty.trim(),
       countries,
       frenchDepartments: frenchDepartments.map(item => item.trim()),
@@ -154,8 +167,15 @@ if (Object.values(checks).some(valid => !valid)) {
       message: 'Activité enregistrée. Elle est en attente de validation.',
       activity
     });
+
   } catch (error) {
     console.error('Erreur enregistrement activité :', error.message);
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message: 'Une activité portant déjà ce nom existe. Choisis un autre nom.'
+      });
+    }
 
     if (error.name === 'ValidationError' || error.name === 'CastError') {
       return res.status(400).json({
@@ -168,6 +188,7 @@ if (Object.values(checks).some(valid => !valid)) {
     });
   }
 });
+
 // Récupérer les activités en attente de validation
 router.get('/pending', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -177,6 +198,7 @@ router.get('/pending', requireAuth, requireAdmin, async (req, res) => {
       .lean();
 
     return res.status(200).json({ activities });
+
   } catch (error) {
     console.error(
       'Erreur récupération activités en attente :',
@@ -188,6 +210,7 @@ router.get('/pending', requireAuth, requireAdmin, async (req, res) => {
     });
   }
 });
+
 // Approuver une activité
 router.patch('/:activityId/approve', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -215,15 +238,52 @@ router.patch('/:activityId/approve', requireAuth, requireAdmin, async (req, res)
       message: 'Activité approuvée avec succès.',
       activity
     });
+
   } catch (error) {
     console.error('Erreur approbation activité :', error.message);
 
     return res.status(500).json({
-      message: 'Impossible d’approuver cette activité.'
+      message: 'Une erreur est survenue lors de l’approbation de l’activité.'
     });
   }
 });
- // Récupérer les activités approuvées pour la recherche
+// Rejeter une activité
+router.patch('/:activityId/reject', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { activityId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(activityId)) {
+      return res.status(400).json({
+        message: 'Identifiant d’activité invalide.'
+      });
+    }
+
+    const activity = await Activity.findOneAndUpdate(
+      { _id: activityId, status: 'pending' },
+      { $set: { status: 'rejected' } },
+      { new: true, runValidators: true }
+    );
+
+    if (!activity) {
+      return res.status(404).json({
+        message: 'Activité introuvable ou déjà traitée.'
+      });
+    }
+
+    return res.status(200).json({
+      message: 'Activité refusée avec succès.',
+      activity
+    });
+
+  } catch (error) {
+    console.error('Erreur refus activité :', error.message);
+
+    return res.status(500).json({
+      message: 'Une erreur est survenue lors du refus de l’activité.'
+    });
+  }
+});
+// Récupérer les activités approuvées pour la recherche
 router.get('/', async (req, res) => {
   try {
     const activities = await Activity.find({ status: 'approved' })
@@ -234,6 +294,7 @@ router.get('/', async (req, res) => {
       .lean();
 
     return res.status(200).json({ activities });
+
   } catch (error) {
     console.error('Erreur récupération activités :', error.message);
 
